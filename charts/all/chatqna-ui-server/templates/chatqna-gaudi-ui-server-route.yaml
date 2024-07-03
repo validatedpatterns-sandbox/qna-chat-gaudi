@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  labels:
+    io.kompose.service: chatqna-gaudi-ui-server
+  name: chatqna-gaudi-ui-server
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  host: chatqna-gaudi-ui-server-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}
+  port:
+    targetPort: 5173
+  to:
+    kind: Service
+    name: chatqna-gaudi-ui-server
+    weight: 100
+  wildcardPolicy: None

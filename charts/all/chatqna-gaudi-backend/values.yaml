@@ -1,0 +1,30 @@
+global: 
+  pattern: gaudillm
+
+  clusterDomain: igk.internal
+
+  gaudillm:
+    namespace: gaudi-llm
+    build_envs: [] # http_proxy/https_prxy can be set here
+    runtime_envs: []
+    
+    chatqna_gaudi_backend: 
+      git_ref: 2b51374 
+      image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/chatqna:latest
+      megaservice_envs:
+        - name: EMBEDDING_SERVICE_HOST_IP
+          value: embedding.gaudi-llm.svc.cluster.local
+        - name: EMBEDDING_SERVICE_PORT
+          value: '"6000"'
+        - name: RETRIEVER_SERVICE_HOST_IP 
+          value: retriever.gaudi-llm.svc.cluster.local
+        - name: RETRIEVER_SERVICE_PORT 
+          value: '"7000"'
+        - name: RERANK_SERVICE_HOST_IP 
+          value: reranking.gaudi-llm.svc.cluster.local
+        - name: RERANK_SERVICE_PORT
+          value: '"8000"'
+        - name: LLM_SERVICE_HOST_IP 
+          value: llm.gaudi-llm.svc.cluster.local
+        - name: LLM_SERVICE_PORT 
+          value: '"9000"'

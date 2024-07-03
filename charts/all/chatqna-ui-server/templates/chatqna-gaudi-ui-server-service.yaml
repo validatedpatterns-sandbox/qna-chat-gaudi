@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    io.kompose.service: chatqna-gaudi-ui-server
+  name: chatqna-gaudi-ui-server
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  ports:
+    - name: "5173"
+      port: 5173
+      targetPort: 5173
+  selector:
+    io.kompose.service: chatqna-gaudi-ui-server

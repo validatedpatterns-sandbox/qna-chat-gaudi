@@ -1,0 +1,14 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  labels:
+    argocd.argoproj.io/instance: chatqna-ui-server
+    io.kompose.service: chatqna-gaudi-ui-server
+  name: opea-chatqna-gaudi
+spec:
+  port:
+    targetPort: 5173
+  tls:
+    termination: edge
+  to:
+    name: chatqna-gaudi-ui-server
