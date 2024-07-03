@@ -5,18 +5,61 @@ clusterGroup:
     - open-cluster-management
     - vault
     - golang-external-secrets
-    - config-demo
-    - hello-world
-  subscriptions:
-    acm:
-      name: advanced-cluster-management
-      namespace: open-cluster-management
-      channel: release-2.10
-      #csv: advanced-cluster-management.v2.6.1
+    - openshift-nfd
+    - habana-ai-operator
+    - openshift-kmm:
+        operatorGroup: true
+        targetNamespaces: 
+    - redhat-ods-operator:
+        operatorGroup: true
+        targetNamespaces: 
+    - gaudi-llm
+
+  subscriptions:    
+    nfd:
+      name: nfd
+      namespace: openshift-nfd
+      channel: stable
+      source: redhat-operators
+
+    kmm:
+      name: kernel-module-management
+      namespace: openshift-kmm
+      channel: stable
+      source: redhat-operators
+
+    habana-ai:
+      name: habana-ai-operator
+      namespace: habana-ai-operator
+      channel: stable
+      source: certified-operators
+
+    rhods:
+      name: rhods-operator
+      namespace: redhat-ods-operator
+      source: redhat-operators
+      sourceNamespace: openshift-marketplace
+      channel: stable
+
+    rhsm:
+      name: servicemeshoperator
+      namespace: openshift-operators
+      source: redhat-operators
+      channel: stable
+
+    rhs:
+      name: serverless-operator
+      namespace: openshift-operators
+      source: redhat-operators
+      channel: stable
+
   projects:
     - hub
-    - config-demo
-    - hello-world
+    - openshift-nfd
+    - openshift-kmm
+    - habana-ai-operator
+    - redhat-ods-operator
+    - gaudi-llm
   # Explicitly mention the cluster-state based overrides we plan to use for this pattern.
   # We can use self-referential variables because the chart calls the tpl function with these variables defined
   sharedValueFiles:
@@ -38,16 +81,6 @@ clusterGroup:
   #   - '/overrides/values-{{ $.Values.global.hubClusterDomain }}.yaml'
   #   - '/overrides/values-{{ $.Values.global.localClusterDomain }}.yaml'
   applications:
-    acm:
-      name: acm
-      namespace: open-cluster-management
-      project: hub
-      path: common/acm
-      ignoreDifferences:
-        - group: internal.open-cluster-management.io
-          kind: ManagedClusterInfo
-          jsonPointers:
-            - /spec/loggingCA
     vault:
       name: vault
       namespace: vault
@@ -58,16 +91,187 @@ clusterGroup:
       namespace: golang-external-secrets
       project: hub
       path: common/golang-external-secrets
-    config-demo:
-      name: config-demo
-      namespace: config-demo
-      project: config-demo
-      path: charts/all/config-demo
-    hello-world:
-      name: hello-world
-      namespace: hello-world
-      project: hello-world
-      path: charts/all/hello-world
+    nfd:
+      name: nfd
+      namespace: openshift-nfd
+      project: openshift-nfd
+      path: charts/all/nfd
+      ignoreDifferences:
+      - group: nfd.openshift.io
+        kind: NodeFeatureDiscovery
+        jqPathExpressions:
+        - '.spec.customConfig'
+        - '.spec.topologyupdater'
+    kmm:
+      name: kmm
+      namespace: openshift-kmm
+      project: openshift-kmm
+      path: charts/all/kmm
+    openshift-data-foundations:
+      name: odf
+      namespace: openshift-storage
+      project: hub
+      path: charts/all/openshift-data-foundations
+    habana-ai:
+      name: habana-ai
+      namespace: habana-ai-operator
+      project: habana-ai-operator
+      path: charts/all/habana-ai
+    rhods-operator:
+      name: rhods-operator
+      namespace: redhat-ods-operator
+      project: redhat-ods-operator
+      path: charts/all/rhods-operator
+    rhods-gaudi-addons:
+      name: rhods-gaudi-addons
+      namespace: redhat-ods-operator
+      project: redhat-ods-operator
+      path: charts/all/rhods-operator-gaudi-addons
+    tei-xeon-service:
+      name: tei-xeon-service
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/tei-xeon-service
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    tei-embedding-service:
+      name: tei-embedding-service
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/tei-embedding-service
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    retriever:
+      name: retriever
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/retriever
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    reranking:
+      name: reranking
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/reranking
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    redis-vector-db:
+      name: redis-vector-db
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/redis-vector-db
+    llm-server-for-gaudi:
+      name: llm-server-for-gaudi
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/llm-server-for-gaudi
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    gaudillm-init:
+      name: gaudillm-init
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/gaudillm-init
+      ignoreDifferences:
+      - group: machineconfiguration.openshift.io
+        kind: KubeletConfig
+        name: 
+        jsonPointers:
+          - /metadata/labels/argocd.argoproj.io~1instance
+          - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+    embedding:
+      name: embedding
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/embedding
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    dataprep:
+      name: dataprep
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/dataprep
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    chatqna-ui-server:
+      name: chatqna-ui-server
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/chatqna-ui-server
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+        - '.spec.template.spec.initContainers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+    chatqna-gaudi-backend:
+      name: chatqna-gaudi-backend
+      namespace: gaudi-llm
+      project: gaudi-llm
+      path: charts/all/chatqna-gaudi-backend
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+      - group: build.openshift.io
+        kind: BuildConfig
+        jqPathExpressions:
+        - '.spec.paused'
+
   imperative:
     # NOTE: We *must* use lists and not hashes. As hashes lose ordering once parsed by helm
     # The default schedule is every 10 minutes: imperative.schedule
