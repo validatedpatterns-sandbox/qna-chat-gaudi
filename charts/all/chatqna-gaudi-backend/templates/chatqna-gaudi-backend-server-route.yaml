@@ -1,0 +1,15 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: megaservice-main-route
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  host: megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}
+  port:
+    targetPort: 8888
+  to:
+    kind: Service
+    name: chatqna-gaudi-backend-server
+    weight: 100
+  wildcardPolicy: None

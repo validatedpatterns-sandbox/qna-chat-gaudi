@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"chatqna-ui:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"chatqna-gaudi-ui-server\")].image"},{"from":{"kind":"ImageStreamTag","name":"chatqna-ui:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"copy-ui-to-workdir\")].image"}]'
+  labels:
+    io.kompose.service: chatqna-gaudi-ui-server
+  name: chatqna-gaudi-ui-server
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: chatqna-gaudi-ui-server
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/gaudi-default: "true"
+        io.kompose.service: chatqna-gaudi-ui-server
+    spec:
+      initContainers:
+        - name: copy-ui-to-workdir
+          image: {{ .Values.global.gaudillm.chatqna_ui_server.image }}
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              cp -v -r /home/user/* /tmp/temp-data/
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+      containers:
+        - env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: CHAT_BASE_URL
+              value: http://megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}/v1/chatqna
+            - name: UPLOAD_FILE_BASE_URL
+              value: http://megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}/v1/dataprep
+            {{- if .Values.global.gaudillm.runtime_envs }}
+            {{- range .Values.global.gaudillm.runtime_envs }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+            {{- end }}
+          image: {{ .Values.global.gaudillm.chatqna_ui_server.image }}
+          name: chatqna-gaudi-ui-server
+          ports:
+            - containerPort: 5173
+              protocol: TCP
+          workingDir: /tmp/temp-data/svelte
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}

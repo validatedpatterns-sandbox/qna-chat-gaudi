@@ -1,0 +1,9 @@
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: chatqna
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  lookupPolicy:
+    local: true

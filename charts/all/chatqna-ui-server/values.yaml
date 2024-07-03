@@ -1,0 +1,13 @@
+global: 
+  pattern: gaudillm
+
+  clusterDomain: lab.com
+
+  gaudillm:
+    namespace: gaudi-llm
+    build_envs: [] # http_proxy/https_prxy can be set here
+    runtime_envs: []
+    
+    chatqna_ui_server:  
+      git_ref: 2b51374 
+      image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/chatqna-ui:latest
