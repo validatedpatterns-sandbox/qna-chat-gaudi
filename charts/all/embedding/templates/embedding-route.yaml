@@ -1,0 +1,16 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: embedding-megaservice-route
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  host: megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}
+  path: /v1/embeddings
+  port:
+    targetPort: 6000
+  to:
+    kind: Service
+    name: embedding
+    weight: 100
+  wildcardPolicy: None

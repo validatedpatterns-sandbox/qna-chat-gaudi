@@ -1,0 +1,35 @@
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: dataprep
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "dataprep-redis:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  paused: true
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    git:
+      ref: {{ .Values.global.gaudillm.dataprep.git_ref }}
+      uri: https://github.com/opea-project/GenAIComps.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: comps/dataprep/redis/langchain/docker/Dockerfile
+      {{- if .Values.global.gaudillm.build_envs }}
+      env:
+      {{- range .Values.global.gaudillm.build_envs }}
+      - name: {{ .name }}
+        value: {{ .value }}
+      {{- end }}
+      {{- end }}
+  triggers:
+  - type: ConfigChange

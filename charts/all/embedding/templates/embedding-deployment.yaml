@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"embedding-tei:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"embedding-tei-server\")].image"}]'
+  labels:
+    io.kompose.service: embedding
+  name: embedding
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: embedding
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: embedding
+    spec:
+      containers:
+        - env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: PYTHONPATH
+              value: /home/user/.local/lib/python3.11/site-packages:/home/user
+            - name: TEI_EMBEDDING_ENDPOINT
+              value: http://tei-embedding-service.gaudi-llm.svc.cluster.local:8090
+            {{- if .Values.global.gaudillm.runtime_envs }}
+            {{- range .Values.global.gaudillm.runtime_envs }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+            {{- end }}
+          image: {{ .Values.global.gaudillm.embedding.image }}
+          name: embedding-tei-server
+          ports:
+            - containerPort: 6000
+              protocol: TCP
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}
