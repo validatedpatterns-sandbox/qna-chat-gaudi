@@ -1,11 +1,80 @@
 ---
 global:
-  pattern: multicloud-gitops
+  pattern: opea-chatqna-on-gaudi
   options:
     useCSV: false
     syncPolicy: Automatic
     installPlanApproval: Automatic
+
+  clusterDomain: cluster1.gaudi.internal
+
+  gaudillm:
+    namespace: gaudi-llm
+    build_envs:
+    - name: http_proxy
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: https_proxy
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: HTTP_PROXY
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: HTTPS_PROXY
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: no_proxy
+      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
+    - name: NO_PROXY
+      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
+    runtime_envs:
+    - name: http_proxy
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: https_proxy
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: HTTP_PROXY
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: HTTPS_PROXY
+      value: http://proxy-internal.cluster1.gaudi.internal:912
+    - name: no_proxy
+      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
+    - name: NO_PROXY
+      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
+
+
+    tei_embedding:
+      image: tei-gaudi:latest
+      model_id: BAAI/bge-large-en-v1.5 # change to set custom TEI embedding model
+#   uncomment to customize PVC size if using TEI models bigger thanBAAI/bge-large-en-v1.5
+#      pvc:i
+#        size: 10Gi
+    tei_xeon:
+      image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.2
+      model_id: BAAI/bge-reranker-large # change to set custom TEI reranker model on CPU
+#      pvc:
+#        size: 10Gi
+#    TODO: IMPLEMENT CUSTOMIZING TGI ENDPOINT FROM RHOAI
+
+    servingRuntime:
+      namespace: gaudi-llm
+      name: tgi-70b-gaudi
+
+    chatqna_gaudi_backend: 
+      image: chatqna:latest
+    chatqna_ui_server:  
+      image: chatqna-ui:latest
+    dataprep:  
+      image: dataprep-redis:latest
+    embedding:  
+      image: embedding-tei:latest
+    gaudillm_init: {}
+    llm_server_for_gaudi:  
+      image: llm-tgi:latest
+    redis_vector_db:  
+      image: redis/redis-stack:7.2.0-v9
+    reranking:  
+      image: reranking-tei:latest
+    retriever:
+      image: retriever-redis:latest
+  
 main:
   clusterGroupName: hub
   multiSourceConfig:
     enabled: true
+
