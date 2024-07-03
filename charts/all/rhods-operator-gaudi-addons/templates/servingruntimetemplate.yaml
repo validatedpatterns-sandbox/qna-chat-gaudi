@@ -1,0 +1,98 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  annotations:
+    opendatahub.io/apiProtocol: REST
+    opendatahub.io/modelServingSupport: '["single"]'
+  labels:
+    opendatahub.io/dashboard: "true"
+  name: tgi-gaudi-llama-70b-runtime
+  namespace: redhat-ods-applications
+objects:
+- apiVersion: serving.kserve.io/v1alpha1
+  kind: ServingRuntime
+  labels:
+    opendatahub.io/dashboard: "true"
+  metadata:
+    annotations:
+      opendatahub.io/recommended-accelerators: '["habana.ai/gaudi"]'
+      openshift.io/display-name: Text Generation Inference llama 2 70b on Habana Gaudi (4 shards)
+    name: tgi-gaudi-llama-70b-4shards
+  spec:
+    containers:
+    - args:
+      - --model-id
+      - /mnt/models/--meta-llama--Llama-2-70b-chat-hf/snapshots/e9149a12809580e8602995856f8098ce973d1080
+      - --port=8080
+      - --num-shard=4
+      - --sharded=true
+      - --json-output
+      env:
+      - name: HF_HOME
+        value: /tmp/hf_home
+      - name: HF_OFFLINE
+        value: "1"
+      - name: TRANSFORMERS_OFFLINE
+        value: "1"
+      - name: HF_HUB_CACHE
+        value: /mnt/models
+      - name: HUGGING_FACE_HUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            key: huggingface
+            name: hf-token-secret
+      - name: PT_HPU_ENABLE_LAZY_COLLECTIVES
+        value: "true"
+      - name: BATCH_BUCKET_SIZE
+        value: "22"
+      - name: PREFILL_BATCH_BUCKET_SIZE
+        value: "1"
+      - name: MAX_BATCH_PREFILL_TOKENS
+        value: "5102"
+      - name: MAX_BATCH_TOTAL_TOKENS
+        value: "32256"
+      - name: MAX_INPUT_LENGTH
+        value: "1024"
+      - name: PAD_SEQUENCE_TO_MULTIPLE_OF
+        value: "1024"
+      - name: MAX_WAITING_TOKENS
+        value: "5"
+      - name: OMPI_MCA_btl_vader_single_copy_mechanism
+        value: none
+      image: ghcr.io/huggingface/tgi-gaudi:1.2.1
+      livenessProbe:
+        exec:
+          command:
+          - curl
+          - localhost:8080/health
+        initialDelaySeconds: 500
+      name: kserve-container
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      readinessProbe:
+        exec:
+          command:
+          - curl
+          - localhost:8080/health
+        initialDelaySeconds: 500
+      volumeMounts:
+      - mountPath: /var/log/habana_logs
+        name: logs-volume
+      - mountPath: /data
+        name: model-volume
+    multiModel: false
+    supportedModelFormats:
+    - autoSelect: true
+      name: llm
+    volumes:
+    - emptyDir:
+        sizeLimit: 500Mi
+      name: logs-volume
+    - emptyDir:
+        sizeLimit: 300Gi
+      name: model-volume
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 40Gi
+      name: shm

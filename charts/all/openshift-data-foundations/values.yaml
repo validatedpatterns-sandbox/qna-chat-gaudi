@@ -1,0 +1,67 @@
+odf:
+  namespace: openshift-storage
+  storageClass:
+    name: ocs-storagecluster-ceph-rgw
+    objectStoreName: ocs-storagecluster-cephobjectstore
+
+route:
+  name: s3-rgw
+  service:
+    name: rook-ceph-rgw-ocs-storagecluster-cephobjectstore
+    weight: 100
+  port:
+    targetPort: http
+
+job:
+  image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+  awsimage: amazon/aws-cli
+
+global:
+  namespace: gaudi-pattern
+
+rgw:
+  cpu: 2
+  memory: 8Gi
+  bucketName: model-bucket
+
+serviceAccountName: gaudi-pattern-sa
+rbac:
+  roles:
+    - name: gaudi-pattern-role
+      createRole: true
+      apiGroups:
+        - '""'
+        - '"apps"'
+        - '"machineconfiguration.openshift.io"'
+        - '"rbac.authorization.k8s.io"'
+        - '"security.openshift.io"'
+        - '"ocs.openshift.io"'
+        - '"route.openshift.io"'
+      scope:
+        cluster: true
+      resources:
+        - namespaces
+        - secrets
+        - storageclusters
+        - routes
+      verbs:
+        - "create"
+        - "get"
+        - "list"
+        - "patch"
+        - "update"
+        - "use"
+  roleBindings:
+    - name: gaudi-pattern-rolebind
+      createBinding: true
+      scope:
+        cluster: true
+        namespace: ""
+      subjects:
+        kind: ServiceAccount
+        name: gaudi-pattern-sa
+        namespace: openshift-storage
+        apiGroup: ""
+      roleRef:
+        kind: ClusterRole
+        name: gaudi-pattern-role
