@@ -1,0 +1,18 @@
+apiVersion: habana.ai/v1
+kind: DeviceConfig
+metadata:
+   name: habana-ai
+   namespace: habana-ai-operator
+spec:
+   devicePlugin:
+     image: {{ .Values.config.devicePlugin.image }}
+     version: {{ .Values.config.devicePlugin.version }}
+   driver:
+     image: {{ .Values.config.driver.image }}
+     version: {{ .Values.config.driver.version }}
+   habanaRuntime:
+     image: {{ .Values.config.habanaRuntime.image }}
+     version: {{ .Values.config.habanaRuntime.version }}
+   nodeMetrics:
+     image: {{ .Values.config.nodeMetrics.image }}
+     version: {{ .Values.config.nodeMetrics.version }}

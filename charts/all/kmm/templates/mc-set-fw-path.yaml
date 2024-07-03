@@ -1,0 +1,22 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-101"
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-kernel-args-firmware-path
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+        - contents:
+            compression: ""
+            source: data:,ib_uverbs%0A
+          mode: 384
+          overwrite: true
+          path: /etc/modules-load.d/ib_uverbs.conf
+  kernelArguments:
+    - 'firmware_class.path=/var/lib/firmware'

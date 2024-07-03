@@ -1,0 +1,44 @@
+job:
+  image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+  namespace: openshift-kmm
+
+kubeletconfig:
+  podPidsLimit: 65536
+
+serviceAccountName: mcp-kmm-config-sa
+rbac:
+  roles:
+    - name: kmm-config-role
+      createRole: true
+      apiGroups:
+        - '""'
+        - '"apps"'
+        - '"apiextensions.k8s.io"'
+        - '"machineconfiguration.openshift.io"'
+      scope:
+        cluster: true
+      resources:
+        - machineconfigs
+        - pods
+        - namespaces
+      verbs:
+        - "get"
+        - "list"
+        - "patch"
+        - "update"
+        - "create"
+        - "watch"
+  roleBindings:
+    - name: kmm-config-rolebinding
+      createBinding: true
+      scope:
+        cluster: true
+        namespace: ""
+      subjects:
+        kind: ServiceAccount
+        name: mcp-kmm-config-sa
+        namespace: openshift-kmm
+        apiGroup: ""
+      roleRef:
+        kind: ClusterRole
+        name: kmm-config-role
