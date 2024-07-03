@@ -1,0 +1,7 @@
+
+apiVersion: v2
+name: llm-server-for-gaudi
+description: Chart deploying llm-server-for-gaudi component for OPEA demo Validated Pattern
+type: application
+version: 0.1.0
+appVersion: 1.0.0

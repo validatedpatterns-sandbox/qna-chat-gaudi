@@ -1,0 +1,35 @@
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: reranking
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "reranking-tei:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  paused: true
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    git:
+      ref: {{ .Values.global.gaudillm.reranking.git_ref }}
+      uri: https://github.com/opea-project/GenAIComps.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: comps/reranks/langchain/docker/Dockerfile
+      {{- if .Values.global.gaudillm.build_envs }}
+      env:
+      {{- range .Values.global.gaudillm.build_envs }}
+      - name: {{ .name }}
+        value: {{ .value }}
+      {{- end }}
+      {{- end }}
+  triggers:
+  - type: ConfigChange

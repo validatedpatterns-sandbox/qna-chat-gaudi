@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    io.kompose.service: llm
+  name: llm
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  ports:
+    - name: "9000"
+      port: 9000
+      targetPort: 9000
+  selector:
+    io.kompose.service: llm

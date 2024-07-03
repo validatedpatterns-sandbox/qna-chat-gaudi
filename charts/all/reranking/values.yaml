@@ -1,0 +1,11 @@
+global: 
+  pattern: gaudillm
+
+  gaudillm:
+    namespace: gaudi-llm
+    build_envs: [] # http_proxy/https_prxy can be set here
+    runtime_envs: []
+
+    reranking:  
+      image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/reranking-tei:latest
+      git_ref: 8ebe2bf # make sure to validate buildconfig & other change scope before updating
