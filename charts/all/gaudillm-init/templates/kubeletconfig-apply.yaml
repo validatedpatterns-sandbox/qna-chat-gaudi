@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeletconfig-pidlimit-apply
+  namespace: {{ .Values.global.gaudillm.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  kubeletconfig-pidlimit-apply.sh: |
+    #!/bin/bash
+   
+    set -o pipefail
+  
+    oc label mcp/master custom-kubelet=set-pod-pid-limit-kubelet
+    oc label mcp/worker custom-kubelet=set-pod-pid-limit-kubelet
+
+    CURRENT_CONFIG="$(oc get mcp worker -ojsonpath='{.spec.configuration.name}')"
+
+    echo "Current MC is ${CURRENT_CONFIG}, checking if podPidsLimit is already increased..."
+
+    until [[ $(oc get mc "${CURRENT_CONFIG}" -ojsonpath='{.spec.config.storage.files[?(@.path=="/etc/kubernetes/kubelet.conf")].contents.source}' | cut -d "," -f2 | tr -d '"' | base64 -d - | grep '"podPidsLimit": 65536') ]]
+    do 
+      echo "Machine config does not include our expected changes, sleeping for 15 seconds..."
+      sleep 15
+    done
+    echo "Machine config contains podPidsLimit: 65536, waiting for MCP to finish applying..."
+
+    if [[ ! $(oc wait --for=condition=Updated mcp/worker --timeout=-1s) ]]
+    then 
+      until [[ $(oc wait --for=condition=Updating mcp/worker --timeout=10s && oc wait --for=condition=Updated mcp/worker --timeout=10s) ]]
+      do
+        echo "MCP not finished updating yet, waiting next 10s to apply..."
+      done
+    fi
+
+    echo "MCP has finished applying changes, podPidsLimit should be present on the nodes!"

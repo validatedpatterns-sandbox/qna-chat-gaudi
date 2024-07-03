@@ -1,0 +1,7 @@
+
+apiVersion: v2
+name: gaudillm-init
+description: Chart deploying gaudillm init components for OPEA demo Validated Pattern
+type: application
+version: 0.1.0
+appVersion: 1.0.0
