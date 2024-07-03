@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: tei-xeon-service
+  name: tei-xeon-service
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: tei-xeon-service
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: tei-xeon-service
+    spec:
+      containers:
+        - args:
+            - --model-id
+            - {{ .Values.global.gaudillm.tei_xeon.model_id }}
+            - --port
+            - '8080'
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: huggingface
+                  name: hf-token-secret
+            - name: HOME
+              value: /data
+            {{- if .Values.global.gaudillm.runtime_envs }}
+            {{- range .Values.global.gaudillm.runtime_envs }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+            {{- end }}
+          image: {{ .Values.global.gaudillm.tei_xeon.image }}
+          name: tei-xeon-server
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /data
+              name: tei-xeon-service-claim0
+      restartPolicy: Always
+      volumes:
+        - name: tei-xeon-service-claim0
+          persistentVolumeClaim:
+            claimName: tei-xeon-service-claim0

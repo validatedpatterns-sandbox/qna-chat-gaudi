@@ -1,0 +1,14 @@
+global: 
+  pattern: gaudillm
+
+  gaudillm:
+    namespace: gaudi-llm
+    build_envs: [] # http_proxy/https_prxy can be set here
+    runtime_envs: []
+
+    tei_embedding:
+      git_ref: a7ee6f1fe13ce8aed440d0baa0953cd8f5c23e0a
+      image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/tei-gaudi:latest
+      pvc:
+        size: 3Gi
+      model_id: BAAI/bge-base-en-v1.5
