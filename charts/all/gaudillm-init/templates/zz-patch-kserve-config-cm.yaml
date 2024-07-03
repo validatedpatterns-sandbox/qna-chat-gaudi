@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patch-kserve-progress-deadline
+  namespace: {{ .Values.global.gaudillm.namespace }}
+data:
+  patch-kserve-progress-deadline.sh: |
+    #!/bin/bash
+    echo "Current knative-serving"
+    oc get -oyaml -n knative-serving knativeserving knative-serving | tee -a /tmp/knative-old.yaml
+
+    echo "Patching knative-serving config to include 30m progressDeadline for model servings..."
+    oc patch --type=merge -n knative-serving knativeserving knative-serving --patch '{"spec":{"config":{"deployment":{"progress-deadline":"30m"}}}}'
+    
+    echo "Post-patch knative-serving manifest"
+    oc get -oyaml -n knative-serving knativeserving knative-serving | tee -a /tmp/knative-new.yaml
+
+    echo "Changes:"
+    diff -y /tmp/knative-old.yaml /tmp/knative-new.yaml --suppress-common-lines

@@ -1,0 +1,95 @@
+global:
+  pattern: gaudillm
+
+  clusterDomain: lab.com
+
+  gaudillm:
+    namespace: gaudi-llm
+  
+job:
+  image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+  
+serviceAccountName: gaudi-pattern-sa
+
+secretStore:
+  name: vault-backend
+  kind: ClusterSecretStore
+
+hftokensecret:
+  key: secret/global/huggingface
+
+rbac:
+  roles:
+    - name: gaudi-pattern-rhoai-role
+      createRole: true
+      apiGroups:
+        - '""'
+        - '"apps"'
+        - '"batch"'
+        - '"machineconfiguration.openshift.io"'
+        - '"rbac.authorization.k8s.io"'
+        - '"security.openshift.io"'
+        - '"datasciencecluster.opendatahub.io"'
+        - '"operator.knative.dev"'
+        - '"build.openshift.io"'
+      scope:
+        cluster: true
+      resources:
+        - namespaces
+        - secrets
+        - datascienceclusters
+        - clusterrolebindings
+        - knativeservings
+        - jobs
+        - buildconfigs
+        - builds
+        - buildconfigs/instantiate
+      verbs:
+        - "create"
+        - "get"
+        - "list"
+        - "patch"
+        - "update"
+        - "use"
+        - "watch"
+    - name: gaudi-pattern-rhoai-role-mcp-label
+      createRole: true
+      apiGroups:
+        - '"machineconfiguration.openshift.io"'
+      scope:
+        cluster: true
+      resources:
+        - machineconfigpools
+        - machineconfigs
+      verbs:
+        - "get"
+        - "list"
+        - "patch"
+        - "watch"
+  roleBindings:
+    - name: gaudi-pattern-rhoai-rolebind
+      createBinding: true
+      scope:
+        cluster: true
+        namespace: ""
+      subjects:
+        kind: ServiceAccount
+        name: gaudi-pattern-sa
+        namespace: gaudi-llm 
+        apiGroup: ""
+      roleRef:
+        kind: ClusterRole
+        name: gaudi-pattern-rhoai-role  
+    - name: gaudi-pattern-rhoai-role-mcp-label
+      createBinding: true
+      scope:
+        cluster: true
+        namespace: ""
+      subjects:
+        kind: ServiceAccount
+        name: gaudi-pattern-sa
+        namespace: gaudi-llm 
+        apiGroup: ""
+      roleRef:
+        kind: ClusterRole
+        name: gaudi-pattern-rhoai-role-mcp-label

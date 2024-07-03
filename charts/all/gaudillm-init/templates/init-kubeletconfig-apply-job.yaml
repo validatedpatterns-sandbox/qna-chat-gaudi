@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: init-kubeletconfig-apply-job
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  template:
+    spec:
+      containers:
+      - image: {{ .Values.job.image }}
+        command:
+        - /bin/bash
+        - -c
+        - |
+          '/tmp/kubeletconfig-pidlimit-apply.sh'
+        name: kubeletconfig-pidlimit-apply
+        volumeMounts:
+          - mountPath: /tmp/kubeletconfig-pidlimit-apply.sh
+            name: kubeletconfig-pidlimit-apply
+            subPath: kubeletconfig-pidlimit-apply.sh
+      volumes:
+        - name: kubeletconfig-pidlimit-apply
+          configMap:
+            name: kubeletconfig-pidlimit-apply
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: {{ .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      terminationGracePeriodSeconds: 400

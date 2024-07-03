@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "11"
+  name: ensure-builds-job
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  template:
+    spec:
+      containers:
+      - image: {{ .Values.job.image }}
+        command:
+        - /bin/bash
+        - -c
+        - |
+          oc wait --for condition=Complete -n habana-ai-operator job confirm-habana-is-enabled --timeout=-1s
+          oc wait --for condition=Complete -n habana-ai-operator job job-wait-for-mcp-update --timeout=-1s
+          oc wait --for condition=Complete -n {{ .Values.global.gaudillm.namespace }} job init-kubeletconfig-apply-job --timeout=-1s
+          '/tmp/ensure-builds.sh'
+        name: ensure-builds
+        volumeMounts:
+          - mountPath: /tmp/ensure-builds.sh
+            name: ensure-builds
+            subPath: ensure-builds.sh
+      volumes:
+        - name: ensure-builds
+          configMap:
+            name: ensure-builds
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: {{ .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      terminationGracePeriodSeconds: 400
