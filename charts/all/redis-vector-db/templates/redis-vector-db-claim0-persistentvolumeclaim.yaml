@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: redis-vector-db-claim0
+  name: redis-vector-db-claim0
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.global.gaudillm.redis_vector_db.pvc.size }}
