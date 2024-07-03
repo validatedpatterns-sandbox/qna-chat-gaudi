@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"reranking-tei:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"reranking-tei-gaudi-server\")].image"}]'
+  labels:
+    io.kompose.service: reranking
+  name: reranking
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: reranking
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: reranking
+    spec:
+      containers:
+        - env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: PYTHONPATH
+              value: /home/user/.local/lib/python3.11/site-packages:/home/user
+            - name: HUGGINGFACEHUB_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: huggingface
+                  name: hf-token-secret
+            - name: TEI_RERANKING_ENDPOINT
+              value: http://tei-xeon-service.gaudi-llm.svc.cluster.local:8808
+            {{- if .Values.global.gaudillm.runtime_envs }}
+            {{- range .Values.global.gaudillm.runtime_envs }}
+            - name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+            {{- end }}
+          image: {{ .Values.global.gaudillm.reranking.image }}
+          name: reranking-tei-gaudi-server
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}

@@ -1,0 +1,16 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llm-megaservice-route
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  host: megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}
+  path: /v1/chat/completions
+  port:
+    targetPort: 9000
+  to:
+    kind: Service
+    name: llm
+    weight: 100
+  wildcardPolicy: None

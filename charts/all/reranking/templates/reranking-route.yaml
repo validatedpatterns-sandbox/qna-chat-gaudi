@@ -1,0 +1,16 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: rerank-megaservice-route
+  namespace: {{ .Values.global.gaudillm.namespace }}
+spec:
+  host: megaservice-{{ .Values.global.gaudillm.namespace }}.apps.{{ .Values.global.clusterDomain }}
+  path: /v1/reranking
+  port:
+    targetPort: 8000
+  to:
+    kind: Service
+    name: reranking
+    weight: 100
+  wildcardPolicy: None
