@@ -1,0 +1,6 @@
+apiVersion: v2
+description: A Helm chart for Habana AI operator deployment
+keywords:
+- habana-ai
+name: habana-ai
+version: 0.0.1
