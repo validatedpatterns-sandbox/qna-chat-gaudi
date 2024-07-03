@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: increase-rgw-mem-limit
+  namespace: {{ .Values.global.namespace }}
+spec:
+  template:
+    spec:
+      containers:
+      - image: {{ .Values.job.image }}
+        command:
+        - /bin/bash
+        - -c
+        - |
+          oc patch -n openshift-storage storagecluster ocs-storagecluster --type merge --patch '{"spec": {"resources": {"rgw": {"limits": {"cpu": "{{ .Values.rgw.cpu }}","memory": "{{ .Values.rgw.memory }}"},"requests": {"cpu": "{{ .Values.rgw.cpu }}","memory": "{{ .Values.rgw.memory }}"}}}}}'
+        name: increase-rgw-mem-limit
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: {{ .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      terminationGracePeriodSeconds: 400
