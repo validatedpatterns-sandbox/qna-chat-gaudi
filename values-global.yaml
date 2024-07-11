@@ -10,33 +10,8 @@ global:
 
   gaudillm:
     namespace: gaudi-llm
-    build_envs:
-    - name: http_proxy
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: https_proxy
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: HTTP_PROXY
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: HTTPS_PROXY
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: no_proxy
-      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
-    - name: NO_PROXY
-      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
-    runtime_envs:
-    - name: http_proxy
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: https_proxy
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: HTTP_PROXY
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: HTTPS_PROXY
-      value: http://proxy-internal.cluster1.gaudi.internal:912
-    - name: no_proxy
-      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
-    - name: NO_PROXY
-      value: .cluster.local,.gaudi.internal,.cluster1.gaudi.internal,.svc,192.168.122.0/24,10.128.0.0/14,127.0.0.1,172.30.0.0/16,api-int.cluster1.gaudi.internal,localhost
-
+    build_envs: [] 
+    runtime_envs: []
 
     tei_embedding:
       image: tei-gaudi:latest
