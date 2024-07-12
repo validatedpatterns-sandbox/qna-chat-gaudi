@@ -13,7 +13,6 @@ spec:
   failedBuildsHistoryLimit: 5
   successfulBuildsHistoryLimit: 5
   nodeSelector: null
-  paused: true
   postCommit: {}
   resources: {}
   runPolicy: SerialLatestOnly
