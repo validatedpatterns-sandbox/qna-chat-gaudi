@@ -1,0 +1,134 @@
+---
+# Source: embedding/templates/dataprep-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    io.kompose.service: dataprep-redis
+  name: dataprep
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "6007"
+      port: 6007
+      targetPort: 6007
+  selector:
+    io.kompose.service: dataprep-redis
+---
+# Source: embedding/templates/dataprep-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"dataprep-redis:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"dataprep-redis-server\")].image"}]'
+  labels:
+    io.kompose.service: dataprep-redis
+  name: dataprep
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: dataprep-redis
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: dataprep-redis
+    spec:
+      containers:
+        - env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: PYTHONPATH
+              value: /home/user/.local/lib/python3.11/site-packages:/home/user
+            - name: REDIS_URL
+              value: redis://redis-vector-db.gaudi-llm.svc.cluster.local:6379
+            - name: INDEX_NAME
+              value: rag-redis
+          image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/dataprep-redis:latest
+          name: dataprep-redis-server
+          ports:
+            - containerPort: 6007
+              protocol: TCP
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+            - name: uploaded-files
+              mountPath: /home/user/comps/dataprep/redis/langchain/uploaded_files
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}
+        - name: uploaded-files
+          emptyDir: {}
+---
+# Source: embedding/templates/dataprep-buildconfig.yaml
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: dataprep
+  namespace: gaudi-llm
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "dataprep-redis:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    git:
+      ref: 8ebe2bf
+      uri: https://github.com/opea-project/GenAIComps.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: comps/dataprep/redis/langchain/docker/Dockerfile
+  triggers:
+  - type: ConfigChange
+---
+# Source: embedding/templates/dataprep-imagestream.yaml
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: dataprep-redis
+  namespace: gaudi-llm
+spec:
+  lookupPolicy:
+    local: true
+---
+# Source: embedding/templates/dataprep-route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+    haproxy.router.openshift.io/timeout: 86400s # long timeout for dataprep processing
+  name: dataprep-megaservice-route
+  namespace: gaudi-llm
+spec:
+  host: megaservice-gaudi-llm.apps.
+  path: /v1/dataprep
+  port:
+    targetPort: 6007
+  to:
+    kind: Service
+    name: dataprep
+    weight: 100
+  wildcardPolicy: None

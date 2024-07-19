@@ -1,0 +1,208 @@
+---
+# Source: odf/templates/rbac/serviceAccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gaudi-pattern-sa
+  namespace: pattern-namespace
+  annotations:
+    argocd.argoproj.io/hook: "PreSync"
+    argocd.argoproj.io/sync-wave: "-10"
+---
+# Source: odf/templates/cm-create-s3-secret.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: create-s3-secret
+  namespace: pattern-namespace
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  create-s3-secret.sh: |
+    #!/bin/bash
+    if [[ $(oc -n openshift-storage get secret s3-secret-bck) ]]; then
+      echo "SECRET EXISTS"
+    else
+      echo "CREATING SECRET..."
+      oc create secret generic s3-secret-bck -n pattern-namespace \
+      --from-literal=AWS_ACCESS_KEY_ID=$(oc extract -n openshift-storage secret/rook-ceph-object-user-ocs-storagecluster-cephobjectstore-ocs-storagecluster-cephobjectstoreuser --keys=AccessKey --to=-) \
+      --from-literal=AWS_SECRET_ACCESS_KEY=$(oc extract -n openshift-storage secret/rook-ceph-object-user-ocs-storagecluster-cephobjectstore-ocs-storagecluster-cephobjectstoreuser --keys=SecretKey --to=-) \
+      --from-literal=S3_RGW_ROUTE=$(oc -n openshift-storage get route s3-rgw -ojsonpath='{.spec.host}')
+    fi
+---
+# Source: odf/templates/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gaudi-pattern-role
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+rules:
+  - apiGroups:
+      - ""
+      - "apps"
+      - "machineconfiguration.openshift.io"
+      - "rbac.authorization.k8s.io"
+      - "security.openshift.io"
+      - "ocs.openshift.io"
+      - "route.openshift.io"
+    resources:
+      - namespaces
+      - secrets
+      - storageclusters
+      - routes
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - use
+---
+# Source: odf/templates/rbac/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gaudi-pattern-rolebind
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+subjects:
+- kind: ServiceAccount
+  name: gaudi-pattern-sa
+  namespace: openshift-storage
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: gaudi-pattern-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: odf/templates/job-create-s3-bucket.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: create-s3-bucket
+  namespace: pattern-namespace
+spec:
+  template:
+    spec:
+      containers:
+      - image: amazon/aws-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          aws --endpoint https://${S3_RGW_ROUTE} --no-verify-ssl s3api create-bucket --bucket model-bucket
+        env:
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                key: AWS_ACCESS_KEY_ID
+                name: s3-secret-bck
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                key: AWS_SECRET_ACCESS_KEY
+                name: s3-secret-bck
+          - name: S3_RGW_ROUTE
+            valueFrom:
+              secretKeyRef:
+                key: S3_RGW_ROUTE
+                name: s3-secret-bck
+        name: create-s3-bucket
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: odf/templates/job-create-s3-secret.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: create-s3-secret
+  namespace: pattern-namespace
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          '/tmp/create-s3-secret.sh'
+        name: create-s3-secret
+        volumeMounts:
+          - mountPath: /tmp/create-s3-secret.sh
+            name: create-s3-secret
+            subPath: create-s3-secret.sh
+      volumes:
+        - name: create-s3-secret
+          configMap:
+            name: create-s3-secret
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: odf/templates/job-increase-rgw-mem-limit.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: increase-rgw-mem-limit
+  namespace: pattern-namespace
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          oc patch -n openshift-storage storagecluster ocs-storagecluster --type merge --patch '{"spec": {"resources": {"rgw": {"limits": {"cpu": "2","memory": "8Gi"},"requests": {"cpu": "2","memory": "8Gi"}}}}}'
+        name: increase-rgw-mem-limit
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: odf/templates/rgw-route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: s3-rgw
+  namespace: openshift-storage
+  labels:
+    app: rook-ceph-rgw
+    ceph_daemon_id: ocs-storagecluster-cephobjectstore
+    rgw: ocs-storagecluster-cephobjectstore
+    rook_cluster: openshift-storage
+    rook_object_store: ocs-storagecluster-cephobjectstore
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  to:
+    kind: Service
+    name: rook-ceph-rgw-ocs-storagecluster-cephobjectstore
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Allow
+  wildcardPolicy: None

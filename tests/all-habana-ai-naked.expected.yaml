@@ -1,0 +1,159 @@
+---
+# Source: habana-ai/templates/rbac/serviceAccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-habana-config-sa
+  namespace: 
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+---
+# Source: habana-ai/templates/cm-wait-for-mcp-update.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wait-for-mcp-update
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+data:
+  wait-for-mcp.sh: |
+    #!/bin/bash
+    MC_FW_PATH='99-worker-kernel-args-firmware-path'
+    waiting_time=10
+
+    until [[ $(oc get mcp worker -o jsonpath='{.status.configuration.source[*].name}') == *"${MC_IOMMU}"* || $(oc get mcp worker -o jsonpath='{.status.configuration.source[*].name}') == *"${MC_FW_PATH}"* ]]
+    do
+      sleep ${waiting_time}
+    done
+    sleep ${waiting_time}
+---
+# Source: habana-ai/templates/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: habana-config-role
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+rules:
+  - apiGroups:
+      - ""
+      - "apps"
+      - "apiextensions.k8s.io"
+      - "machineconfiguration.openshift.io"
+      - "imageregistry.operator.openshift.io"
+    resources:
+      - machineconfigs
+      - machineconfigpools
+      - pods
+      - namespaces
+      - services
+      - configs
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - create
+      - watch
+---
+# Source: habana-ai/templates/rbac/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: habana-config-rolebinding
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+subjects:
+- kind: ServiceAccount
+  name: mcp-habana-config-sa
+  namespace: habana-ai-operator
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: habana-config-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: habana-ai/templates/job-confirm-habana-is-enabled.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  name: confirm-habana-is-enabled
+spec:
+  template:
+    spec:
+      containers:
+        - image: vault.habana.ai/gaudi-docker/1.15.1/rhel9.2/habanalabs/pytorch-installer-2.2.0:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+               hl-smi -Q memory.total -f csv
+          imagePullPolicy: IfNotPresent
+          name: confirm-habana-is-enabled
+          resources:
+            limits:
+              habana.ai/gaudi: "1"
+            requests:
+              habana.ai/gaudi: "1"
+      restartPolicy: Never
+      serviceAccount: mcp-habana-config-sa
+      serviceAccountName: mcp-habana-config-sa
+---
+# Source: habana-ai/templates/job-wait-for-mcp-update.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
+  name: job-wait-for-mcp-update
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+           '/tmp/wait-for-mcp.sh' && \
+           oc wait mcp/worker --for condition=updated --timeout=2000s
+        name: wait-for-mcp-update
+        volumeMounts:
+          - mountPath: /tmp/wait-for-mcp.sh
+            name: wait-for-mcp-update
+            subPath: wait-for-mcp.sh
+      volumes:
+        - name: wait-for-mcp-update
+          configMap:
+            name: wait-for-mcp-update
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: mcp-habana-config-sa
+      serviceAccountName: mcp-habana-config-sa
+      terminationGracePeriodSeconds: 60
+---
+# Source: habana-ai/templates/deviceconfig.yaml
+apiVersion: habana.ai/v1
+kind: DeviceConfig
+metadata:
+   name: habana-ai
+   namespace: habana-ai-operator
+spec:
+   devicePlugin:
+     image: vault.habana.ai/docker-k8s-device-plugin/docker-k8s-device-plugin
+     version: 1.15.1
+   driver:
+     image: image-registry.openshift-image-registry.svc:5000/habana-ai-operator/habana-ai-driver
+     version: 1.15.1-15
+   habanaRuntime:
+     image: vault.habana.ai/habana-ocp-operator/1.15.1/habana-runtime
+     version: 1.15.1-15
+   nodeMetrics:
+     image: vault.habana.ai/gaudi-metric-exporter/metric-exporter
+     version: 1.15.1-15

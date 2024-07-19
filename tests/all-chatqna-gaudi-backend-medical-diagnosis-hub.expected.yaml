@@ -1,0 +1,246 @@
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: megaservice-config
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  chatqna.yaml: |
+    # Copyright (c) 2024 Intel Corporation
+    #
+    # Licensed under the Apache License, Version 2.0 (the "License");
+    # you may not use this file except in compliance with the License.
+    # You may obtain a copy of the License at
+    #
+    #    http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing, software
+    # distributed under the License is distributed on an "AS IS" BASIS,
+    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    # See the License for the specific language governing permissions and
+    # limitations under the License.
+
+    opea_micro_services:
+      redis-vector-db:
+        host: ${REDIS_SERVICE_HOST_IP}
+        ports:
+          - "6379:6379"
+          - "8001:8001"
+        image: redis/redis-stack:7.2.0-v9
+      dataprep-redis-service:
+        host: ${DATAPREP_SERVICE_HOST_IP}
+        ports: ${DATAPREP_SERVICE_PORT}
+        image: opea/dataprep-redis:latest
+        environment:
+          REDIS_URL: ${REDIS_URL}
+          INDEX_NAME: ${INDEX_NAME}
+      tei-embedding-service:
+        host: ${TEI_EMBEDDING_SERVICE_IP}
+        ports: ${TEI_EMBEDDING_SERVICE_PORT}
+        image: opea/tei-gaudi:latest
+        volumes:
+          - "./data:/data"
+        runtime: habana
+        cap_add:
+          - SYS_NICE
+        ipc: host
+        environment:
+          HABANA_VISIBLE_DEVICES: all
+          OMPI_MCA_btl_vader_single_copy_mechanism: none
+        model-id: ${EMBEDDING_MODEL_ID}
+      embedding:
+        host: ${EMBEDDING_SERVICE_HOST_IP}
+        ports: ${EMBEDDING_SERVICE_PORT}
+        image: opea/embedding-tei:latest
+        endpoint: /v1/embeddings
+      retrieval:
+        host: ${RETRIEVER_SERVICE_HOST_IP}
+        ports: ${RETRIEVER_SERVICE_PORT}
+        image: opea/retriever-redis:latest
+        endpoint: /v1/retrieval
+      reranking:
+        host: ${RERANK_SERVICE_HOST_IP}
+        ports: ${RERANK_SERVICE_PORT}
+        image: opea/reranking-tei:latest
+        endpoint: /v1/reranking
+      tgi_service:
+        host: ${TGI_SERVICE_IP}
+        ports: ${TGI_SERVICE_PORT}
+        image: ghcr.io/huggingface/tgi-gaudi:1.2.1
+        volumes:
+          - "./data:/data"
+        runtime: habana
+        cap_add:
+          - SYS_NICE
+        ipc: host
+        environment:
+          HUGGINGFACEHUB_API_TOKEN: ${HUGGINGFACEHUB_API_TOKEN}
+          HABANA_VISIBLE_DEVICES: all
+          OMPI_MCA_btl_vader_single_copy_mechanism: none
+        model-id: ${LLM_MODEL_ID}
+      llm:
+        host: ${LLM_SERVICE_HOST_IP}
+        ports: ${LLM_SERVICE_PORT}
+        image: opea/llm-tgi:latest
+        endpoint: /v1/chat/completions
+      ui:
+        host: ${UI_SERVICE_HOST_IP}
+        ports:
+          - "5173:5173"
+        image: opea/chatqna-ui:latest
+        environment:
+          - CHAT_BASE_URL=${BACKEND_SERVICE_ENDPOINT}
+
+    opea_mega_service:
+      host: ${MEGA_SERVICE_HOST_IP}
+      ports: ${MEGA_SERVICE_PORT}
+      image: opea/chatqna:latest
+      endpoint: /v1/chatqna
+      mega_flow:
+        - embedding >> retrieval >> reranking >> llm
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    io.kompose.service: chatqna-gaudi-backend-server
+  name: chatqna-gaudi-backend-server
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "8888"
+      port: 8888
+      targetPort: 8888
+  selector:
+    io.kompose.service: chatqna-gaudi-backend-server
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"chatqna:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"chatqna-gaudi-backend-server\")].image"}]'
+  labels:
+    io.kompose.service: chatqna-gaudi-backend-server
+  name: chatqna-gaudi-backend-server
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: chatqna-gaudi-backend-server
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/gaudi-default: "true"
+        io.kompose.service: chatqna-gaudi-backend-server
+    spec:
+      containers:
+        - env:
+            - name: MEGA_SERVICE_HOST_IP
+              value: megaservice-gaudi-llm.apps.region.example.com
+            - name: EMBEDDING_SERVICE_HOST_IP
+              value: embedding.gaudi-llm.svc.cluster.local
+            - name: EMBEDDING_SERVICE_PORT
+              value: "6000"
+            - name: RETRIEVER_SERVICE_HOST_IP
+              value: retriever.gaudi-llm.svc.cluster.local
+            - name: RETRIEVER_SERVICE_PORT
+              value: "7000"
+            - name: RERANK_SERVICE_HOST_IP
+              value: reranking.gaudi-llm.svc.cluster.local
+            - name: RERANK_SERVICE_PORT
+              value: "8000"
+            - name: LLM_SERVICE_HOST_IP
+              value: llm.gaudi-llm.svc.cluster.local
+            - name: LLM_SERVICE_PORT
+              value: "9000"           
+          image: chatqna:latest
+          name: chatqna-gaudi-backend-server
+          ports:
+            - containerPort: 8888
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /home/user/megaservice-config.yaml
+              name: megaservice-config
+              subPath: megaservice-config.yaml
+      restartPolicy: Always
+      volumes:
+        - name: megaservice-config 
+          configMap:
+            name: megaservice-config
+            defaultMode: 0755
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-buildconfig.yaml
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: chatqna-megaservice-server
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "chatqna:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    contextDir: ChatQnA/docker
+    git:
+      ref: 2b51374
+      uri: https://github.com/opea-project/GenAIExamples.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers:
+  - type: ConfigChange
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-imagestream.yaml
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: chatqna
+  namespace: gaudi-llm
+spec:
+  lookupPolicy:
+    local: true
+---
+# Source: chatqna-gaudi-backend/templates/chatqna-gaudi-backend-server-route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: megaservice-main-route
+  namespace: gaudi-llm
+spec:
+  host: megaservice-gaudi-llm.apps.region.example.com
+  port:
+    targetPort: 8888
+  to:
+    kind: Service
+    name: chatqna-gaudi-backend-server
+    weight: 100
+  wildcardPolicy: None
