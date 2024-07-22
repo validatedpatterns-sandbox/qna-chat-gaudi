@@ -1,0 +1,416 @@
+---
+# Source: gaudillm-init/templates/rbac/serviceAccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gaudi-pattern-sa
+  namespace: pattern-namespace
+  annotations:
+    argocd.argoproj.io/hook: "PreSync"
+    argocd.argoproj.io/sync-wave: "-10"
+---
+# Source: gaudillm-init/templates/ensure-builds-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ensure-builds
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  ensure-builds.sh: |
+    #!/bin/bash
+
+    set -o pipefail
+
+    NS="gaudi-llm"
+
+    echo "Ensuring no buildconfigs are in failed status after all MCs have been applied"
+
+    for buildconfig in $(oc -n ${NS} get buildconfigs -oname)
+    do
+      echo "Getting last build data for BuildConfig ${buildconfig}"
+      LATEST="$(oc -n ${NS} get ${buildconfig} -ojsonpath='{.status.lastVersion}')"
+      BUILD_NAME="$(oc -n ${NS} get ${buildconfig} -ojsonpath='{.metadata.name}')"
+      echo "Checking last build status..."
+      LAST_FAILED="$(oc -n ${NS} get build ${BUILD_NAME}-${LATEST} -ojsonpath='{.status.phase}')"
+      echo "Is last build ${LATEST} failed? ${LAST_FAILED}"
+      if [[ "Failed" = "${LAST_FAILED}" ]]
+      then
+        echo "Restarting build for last failed BuildConfig ${BUILD_NAME}"
+        oc -n ${NS} start-build "${buildconfig}"
+      fi
+    done
+---
+# Source: gaudillm-init/templates/init-istio-ca-secret-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: create-rhoai-istio-rootca-cert-secret
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  create-rhoai-istio-rootca-cert-secret.sh: |
+    #!/bin/bash
+    EXISTS=$(oc get secret --ignore-not-found rhoai-ca-bundle)
+
+    if [[ -z "${EXISTS}" ]]; then    
+      oc create secret generic -n gaudi-llm rhoai-ca-bundle --from-literal=tls.crt="$(oc extract secret/knative-serving-cert -n istio-system --to=- --keys=tls.crt)"
+    else
+      echo "oc get secret --ignore-not-found rhoai-ca-bundle returned non-empty string, not creating a secret"
+    fi
+---
+# Source: gaudillm-init/templates/kubeletconfig-apply.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeletconfig-pidlimit-apply
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  kubeletconfig-pidlimit-apply.sh: |
+    #!/bin/bash
+   
+    set -o pipefail
+  
+    oc label mcp/master custom-kubelet=set-pod-pid-limit-kubelet
+    oc label mcp/worker custom-kubelet=set-pod-pid-limit-kubelet
+
+    CURRENT_CONFIG="$(oc get mcp worker -ojsonpath='{.spec.configuration.name}')"
+
+    echo "Current MC is ${CURRENT_CONFIG}, checking if podPidsLimit is already increased..."
+
+    until [[ $(oc get mc "${CURRENT_CONFIG}" -ojsonpath='{.spec.config.storage.files[?(@.path=="/etc/kubernetes/kubelet.conf")].contents.source}' | cut -d "," -f2 | tr -d '"' | base64 -d - | grep '"podPidsLimit": 65536') ]]
+    do 
+      echo "Machine config does not include our expected changes, sleeping for 15 seconds..."
+      sleep 15
+    done
+    echo "Machine config contains podPidsLimit: 65536, waiting for MCP to finish applying..."
+
+    if [[ ! $(oc wait --for=condition=Updated mcp/worker --timeout=-1s) ]]
+    then 
+      until [[ $(oc wait --for=condition=Updating mcp/worker --timeout=10s && oc wait --for=condition=Updated mcp/worker --timeout=10s) ]]
+      do
+        echo "MCP not finished updating yet, waiting next 10s to apply..."
+      done
+    fi
+
+    echo "MCP has finished applying changes, podPidsLimit should be present on the nodes!"
+---
+# Source: gaudillm-init/templates/zz-patch-kserve-config-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patch-kserve-progress-deadline
+  namespace: gaudi-llm
+data:
+  patch-kserve-progress-deadline.sh: |
+    #!/bin/bash
+    echo "Current knative-serving"
+    oc get -oyaml -n knative-serving knativeserving knative-serving | tee -a /tmp/knative-old.yaml
+
+    echo "Patching knative-serving config to include 30m progressDeadline for model servings..."
+    oc patch --type=merge -n knative-serving knativeserving knative-serving --patch '{"spec":{"config":{"deployment":{"progress-deadline":"30m"}}}}'
+    
+    echo "Post-patch knative-serving manifest"
+    oc get -oyaml -n knative-serving knativeserving knative-serving | tee -a /tmp/knative-new.yaml
+
+    echo "Changes:"
+    diff -y /tmp/knative-old.yaml /tmp/knative-new.yaml --suppress-common-lines
+---
+# Source: gaudillm-init/templates/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gaudi-pattern-rhoai-role
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+rules:
+  - apiGroups:
+      - ""
+      - "apps"
+      - "batch"
+      - "machineconfiguration.openshift.io"
+      - "rbac.authorization.k8s.io"
+      - "security.openshift.io"
+      - "datasciencecluster.opendatahub.io"
+      - "operator.knative.dev"
+      - "build.openshift.io"
+    resources:
+      - namespaces
+      - secrets
+      - datascienceclusters
+      - clusterrolebindings
+      - knativeservings
+      - jobs
+      - buildconfigs
+      - builds
+      - buildconfigs/instantiate
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - use
+      - watch
+---
+# Source: gaudillm-init/templates/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gaudi-pattern-rhoai-role-mcp-label
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+rules:
+  - apiGroups:
+      - "machineconfiguration.openshift.io"
+    resources:
+      - machineconfigpools
+      - machineconfigs
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+---
+# Source: gaudillm-init/templates/rbac/crb-rhoai.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-100"
+  name: kubeadmin-rhoai-cluster-admin-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: User
+  apiGroup: rbac.authorization.k8s.io
+  name: 'kube:admin'
+---
+# Source: gaudillm-init/templates/rbac/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gaudi-pattern-rhoai-rolebind
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+subjects:
+- kind: ServiceAccount
+  name: gaudi-pattern-sa
+  namespace: gaudi-llm
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: gaudi-pattern-rhoai-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: gaudillm-init/templates/rbac/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gaudi-pattern-rhoai-role-mcp-label
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+subjects:
+- kind: ServiceAccount
+  name: gaudi-pattern-sa
+  namespace: gaudi-llm
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: gaudi-pattern-rhoai-role-mcp-label
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: gaudillm-init/templates/ensure-builds-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "11"
+  name: ensure-builds-job
+  namespace: gaudi-llm
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          oc wait --for condition=Complete -n habana-ai-operator job confirm-habana-is-enabled --timeout=-1s
+          oc wait --for condition=Complete -n habana-ai-operator job job-wait-for-mcp-update --timeout=-1s
+          oc wait --for condition=Complete -n gaudi-llm job init-kubeletconfig-apply-job --timeout=-1s
+          '/tmp/ensure-builds.sh'
+        name: ensure-builds
+        volumeMounts:
+          - mountPath: /tmp/ensure-builds.sh
+            name: ensure-builds
+            subPath: ensure-builds.sh
+      volumes:
+        - name: ensure-builds
+          configMap:
+            name: ensure-builds
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: gaudillm-init/templates/init-istio-ca-secret-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: create-rhoai-istio-rootca-cert-secret
+  namespace: gaudi-llm
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          oc wait --for=condition=ReconcileComplete=True dsc/rhods-datasciencecluster --timeout=-1s
+          oc wait --for condition=Ready=True knativeserving -n knative-serving knative-serving --timeout=-1s
+          '/tmp/create-rhoai-istio-rootca-cert-secret.sh'
+        name: create-rhoai-istio-rootca-cert-secret
+        volumeMounts:
+          - mountPath: /tmp/create-rhoai-istio-rootca-cert-secret.sh
+            name: create-rhoai-istio-rootca-cert-secret
+            subPath: create-rhoai-istio-rootca-cert-secret.sh
+      volumes:
+        - name: create-rhoai-istio-rootca-cert-secret
+          configMap:
+            name: create-rhoai-istio-rootca-cert-secret
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: gaudillm-init/templates/init-kubeletconfig-apply-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "10"
+  name: init-kubeletconfig-apply-job
+  namespace: gaudi-llm
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          '/tmp/kubeletconfig-pidlimit-apply.sh'
+        name: kubeletconfig-pidlimit-apply
+        volumeMounts:
+          - mountPath: /tmp/kubeletconfig-pidlimit-apply.sh
+            name: kubeletconfig-pidlimit-apply
+            subPath: kubeletconfig-pidlimit-apply.sh
+      volumes:
+        - name: kubeletconfig-pidlimit-apply
+          configMap:
+            name: kubeletconfig-pidlimit-apply
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: gaudillm-init/templates/zz-patch-kserve-config-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "102"
+  name: zz-patch-kserve-progress-deadline
+  namespace: gaudi-llm
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          # wait for DSC to progress
+          oc wait --for=condition=ReconcileComplete=True dsc/rhods-datasciencecluster --timeout=-1s
+          # now we wait for Kserve to become Ready installing... 
+          oc wait --for=condition=Ready=True -n knative-serving knativeserving knative-serving --timeout=-1s
+          # Then we patch progressDeadline in Kserve Config since 70b might download longer > 600secs onto kserve
+          '/tmp/patch-kserve-progress-deadline.sh'          
+        name: patch-kserve-progress-deadline
+        volumeMounts:
+          - mountPath: /tmp/patch-kserve-progress-deadline.sh
+            name: patch-kserve-progress-deadline
+            subPath: patch-kserve-progress-deadline.sh
+      volumes:
+        - name: patch-kserve-progress-deadline
+          configMap:
+            name: patch-kserve-progress-deadline
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: gaudi-pattern-sa
+      serviceAccountName: gaudi-pattern-sa
+      terminationGracePeriodSeconds: 400
+---
+# Source: gaudillm-init/templates/external-secret-hftoken.yaml
+apiVersion: "external-secrets.io/v1beta1"
+kind: ExternalSecret
+metadata:
+  name: huggingface-token-external-secret
+  namespace: gaudi-llm
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  refreshInterval: 15s
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: hf-token-secret
+    template:
+      type: Opaque
+  data:
+  - secretKey: huggingface
+    remoteRef:
+      key: secret/global/huggingface
+      property: secret
+---
+# Source: gaudillm-init/templates/kubeletconfig-increase-max-pids.yaml
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  name: set-pid-limit-kubelet
+spec:
+  machineConfigPoolSelector:
+    matchLabels:
+      custom-kubelet: set-pod-pid-limit-kubelet
+  kubeletConfig:
+    podPidsLimit: 65536

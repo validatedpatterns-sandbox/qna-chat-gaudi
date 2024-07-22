@@ -1,0 +1,146 @@
+---
+# Source: llm-server-for-gaudi/templates/llm-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    io.kompose.service: llm
+  name: llm
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "9000"
+      port: 9000
+      targetPort: 9000
+  selector:
+    io.kompose.service: llm
+---
+# Source: llm-server-for-gaudi/templates/llm-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"llm-tgi:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"llm-tgi-gaudi-server\")].image"}]'
+  labels:
+    io.kompose.service: llm
+  name: llm
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: llm
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: llm
+    spec:
+      containers:
+        - command:
+          - /bin/bash
+          - -c
+          - |
+            cp /usr/lib/ssl/cert.pem /tmp/bundle.crt && \
+            cat /rhoai-ca/tls.crt  | tee -a '/tmp/bundle.crt' && \
+            python llm.py
+          env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: PYTHONPATH
+              value: /home/user/.local/lib/python3.11/site-packages:/home/user
+            - name: HUGGINGFACEHUB_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: huggingface
+                  name: hf-token-secret
+            - name: SSL_CERT_FILE
+              value: /tmp/bundle.crt
+            - name: TGI_LLM_ENDPOINT
+              value: https://tgi-70b-1-rag-demo.apps.lab.com
+          image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/llm-tgi:latest
+          name: llm-tgi-gaudi-server
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+            - name: odh-ca-bundle
+              mountPath: /rhoai-ca
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}
+        - name: odh-ca-bundle
+          secret:
+            secretName: rhoai-ca-bundle
+            defaultMode: 420
+---
+# Source: llm-server-for-gaudi/templates/llm-buildconfig.yaml
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: llm-tgi-gaudi-server
+  namespace: gaudi-llm
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "llm-tgi:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    git:
+      ref: 8ebe2bf
+      uri: https://github.com/opea-project/GenAIComps.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: comps/llms/text-generation/tgi/Dockerfile
+  triggers:
+  - type: ConfigChange
+---
+# Source: llm-server-for-gaudi/templates/llm-imagestream.yaml
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: llm-tgi
+  namespace: gaudi-llm
+spec:
+  lookupPolicy:
+    local: true
+---
+# Source: llm-server-for-gaudi/templates/llm-route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llm-megaservice-route
+  namespace: gaudi-llm
+spec:
+  host: megaservice-gaudi-llm.apps.lab.com
+  path: /v1/chat/completions
+  port:
+    targetPort: 9000
+  to:
+    kind: Service
+    name: llm
+    weight: 100
+  wildcardPolicy: None

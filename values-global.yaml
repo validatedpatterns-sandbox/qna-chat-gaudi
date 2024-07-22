@@ -6,8 +6,6 @@ global:
     syncPolicy: Automatic
     installPlanApproval: Automatic
 
-  clusterDomain: cluster1.gaudi.internal
-
   gaudillm:
     namespace: gaudi-llm
     build_envs: [] 

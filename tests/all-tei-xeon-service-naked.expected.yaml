@@ -1,0 +1,89 @@
+---
+# Source: tei-xeon-service/templates/tei-xeon-service-claim0-persistentvolumeclaim.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: tei-xeon-service-claim0
+  name: tei-xeon-service-claim0
+  namespace: gaudi-llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+# Source: tei-xeon-service/templates/tei-xeon-service-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: tei-xeon-service
+  name: tei-xeon-service
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "8808"
+      port: 8808
+      targetPort: 8080
+  selector:
+    io.kompose.service: tei-xeon-service
+---
+# Source: tei-xeon-service/templates/tei-xeon-service-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: tei-xeon-service
+  name: tei-xeon-service
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: tei-xeon-service
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: tei-xeon-service
+    spec:
+      containers:
+        - args:
+            - --model-id
+            - BAAI/bge-reranker-base
+            - --port
+            - '8080'
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: huggingface
+                  name: hf-token-secret
+            - name: HOME
+              value: /data
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.2
+          name: tei-xeon-server
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /data
+              name: tei-xeon-service-claim0
+      restartPolicy: Always
+      volumes:
+        - name: tei-xeon-service-claim0
+          persistentVolumeClaim:
+            claimName: tei-xeon-service-claim0

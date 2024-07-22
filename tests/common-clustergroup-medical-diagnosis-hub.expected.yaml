@@ -291,6 +291,36 @@ data:
       clusterPlatform: aws
       clusterVersion: "4.12"
       extraValueFiles: []
+      gaudillm:
+        build_envs: []
+        chatqna_gaudi_backend:
+          image: chatqna:latest
+        chatqna_ui_server:
+          image: chatqna-ui:latest
+        dataprep:
+          image: dataprep-redis:latest
+        embedding:
+          image: embedding-tei:latest
+        gaudillm_init: {}
+        llm_server_for_gaudi:
+          image: llm-tgi:latest
+        namespace: gaudi-llm
+        redis_vector_db:
+          image: redis/redis-stack:7.2.0-v9
+        reranking:
+          image: reranking-tei:latest
+        retriever:
+          image: retriever-redis:latest
+        runtime_envs: []
+        servingRuntime:
+          name: tgi-70b-gaudi
+          namespace: gaudi-llm
+        tei_embedding:
+          image: tei-gaudi:latest
+          model_id: BAAI/bge-large-en-v1.5
+        tei_xeon:
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.2
+          model_id: BAAI/bge-reranker-large
       hubClusterDomain: apps.hub.example.com
       localClusterDomain: apps.region.example.com
       namespace: pattern-namespace
