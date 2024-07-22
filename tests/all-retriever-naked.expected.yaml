@@ -1,0 +1,126 @@
+---
+# Source: retriever/templates/retriever-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: retriever
+  name: retriever
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "7000"
+      port: 7000
+      targetPort: 7000
+  selector:
+    io.kompose.service: retriever
+---
+# Source: retriever/templates/retriever-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+    argocd.argoproj.io/sync-wave: "5"
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"retriever-redis:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"retriever-redis-server\")].image"}]'
+  labels:
+    io.kompose.service: retriever
+  name: retriever
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: retriever
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/chatqna-default: "true"
+        io.kompose.service: retriever
+    spec:
+      containers:
+        - env:
+            - name: HOME
+              value: /tmp/temp-data
+            - name: PYTHONPATH
+              value: /home/user/.local/lib/python3.11/site-packages:/home/user
+            - name: INDEX_NAME
+              value: rag-redis
+            - name: REDIS_URL
+              value: redis://redis-vector-db.gaudi-llm.svc.cluster.local:6379
+          image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/retriever-redis:latest
+          name: retriever-redis-server
+          ports:
+            - containerPort: 7000
+              protocol: TCP
+          workingDir: /home/user/comps/retrievers/langchain
+          volumeMounts:
+            - name: temp-data
+              mountPath: /tmp/temp-data
+      restartPolicy: Always
+      volumes:
+        - name: temp-data
+          emptyDir: {}
+---
+# Source: retriever/templates/retriever-buildconfig.yaml
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: retriever
+  namespace: gaudi-llm
+spec:
+  output:
+    to:
+      kind: "ImageStreamTag"
+      name: "retriever-redis:latest"
+  failedBuildsHistoryLimit: 5
+  successfulBuildsHistoryLimit: 5
+  nodeSelector: null
+  postCommit: {}
+  resources: {}
+  runPolicy: SerialLatestOnly
+  source:
+    git:
+      ref: 8ebe2bf
+      uri: https://github.com/opea-project/GenAIComps.git
+    type: Git
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: comps/retrievers/langchain/docker/Dockerfile
+  triggers:
+  - type: ConfigChange
+---
+# Source: retriever/templates/retriever-imagestream.yaml
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: retriever-redis
+  namespace: gaudi-llm
+spec:
+  lookupPolicy:
+    local: true
+---
+# Source: retriever/templates/retriever-route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: retriever-megaservice-route
+  namespace: gaudi-llm
+spec:
+  host: megaservice-gaudi-llm.apps.
+  path: /v1/retrieval
+  port:
+    targetPort: 7000
+  to:
+    kind: Service
+    name: retriever
+    weight: 100
+  wildcardPolicy: None

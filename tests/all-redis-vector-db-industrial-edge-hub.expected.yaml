@@ -1,0 +1,83 @@
+---
+# Source: redis-vector-db/templates/redis-vector-db-claim0-persistentvolumeclaim.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: redis-vector-db-claim0
+  name: redis-vector-db-claim0
+  namespace: gaudi-llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+# Source: redis-vector-db/templates/redis-vector-db-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: redis-vector-db
+  name: redis-vector-db
+  namespace: gaudi-llm
+spec:
+  ports:
+    - name: "6379"
+      port: 6379
+      targetPort: 6379
+    - name: "8001"
+      port: 8001
+      targetPort: 8001
+  selector:
+    io.kompose.service: redis-vector-db
+---
+# Source: redis-vector-db/templates/redis-vector-db-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker_compose.yaml
+    kompose.version: 1.33.0 (3ce457399)
+  labels:
+    io.kompose.service: redis-vector-db
+  name: redis-vector-db
+  namespace: gaudi-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: redis-vector-db
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker_compose.yaml
+        kompose.version: 1.33.0 (3ce457399)
+      labels:
+        io.kompose.network/4d067d5a9a2c06d7a0e9a2d76a71b4cf020d13f7-default: "true"
+        io.kompose.service: redis-vector-db
+    spec:
+      containers:
+        - image: redis/redis-stack:7.2.0-v9
+          name: redis-vector-db
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+            - containerPort: 8001
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /data
+              name: redis-vector-db-claim0
+            - mountPath: /redisinsight/logs
+              name: redisinsight-logs
+      restartPolicy: Always
+      volumes:
+        - name: redis-vector-db-claim0
+          persistentVolumeClaim:
+            claimName: redis-vector-db-claim0
+        - name: redisinsight-logs
+          emptyDir: {}

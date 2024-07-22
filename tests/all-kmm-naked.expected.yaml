@@ -1,0 +1,139 @@
+---
+# Source: kmm/templates/rbac/serviceAccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-kmm-config-sa
+  namespace: 
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+---
+# Source: kmm/templates/cm-wait-for-vault.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wait-for-vault
+  namespace: openshift-kmm
+  annotations:
+    argocd.argoproj.io/sync-wave: "-210"
+data:
+  wait-for-vault.sh: |
+    #!/bin/bash
+
+    waiting_time=10
+    
+    until [[ $(oc get ns vault) ]]
+    do
+      sleep ${waiting_time}
+    done
+
+    until [[ $(oc -n vault get pods vault-0 -o jsonpath='{.metadata.name}') == *"vault-0"* ]]
+    do
+      sleep ${waiting_time}
+    done
+    
+    sleep ${waiting_time}
+---
+# Source: kmm/templates/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kmm-config-role
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+rules:
+  - apiGroups:
+      - ""
+      - "apps"
+      - "apiextensions.k8s.io"
+      - "machineconfiguration.openshift.io"
+    resources:
+      - machineconfigs
+      - pods
+      - namespaces
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - create
+      - watch
+---
+# Source: kmm/templates/rbac/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kmm-config-rolebinding
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-15"
+subjects:
+- kind: ServiceAccount
+  name: mcp-kmm-config-sa
+  namespace: openshift-kmm
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: kmm-config-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: kmm/templates/job-wait-for-vault.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-200"
+  name: job-wait-for-vault
+  namespace: openshift-kmm
+spec:
+  template:
+    spec:
+      containers:
+      - image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+           '/tmp/wait-for-vault.sh' && \
+           oc -n vault wait --for=condition=Ready pod/vault-0
+        name: wait-for-vault
+        volumeMounts:
+          - mountPath: /tmp/wait-for-vault.sh
+            name: wait-for-vault
+            subPath: wait-for-vault.sh
+      volumes:
+        - name: wait-for-vault
+          configMap:
+            name: wait-for-vault
+            defaultMode: 0755
+      dnsPolicy: ClusterFirst
+      restartPolicy: Never
+      serviceAccount: mcp-kmm-config-sa
+      serviceAccountName: mcp-kmm-config-sa
+      terminationGracePeriodSeconds: 60
+---
+# Source: kmm/templates/mc-set-fw-path.yaml
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-101"
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-kernel-args-firmware-path
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+        - contents:
+            compression: ""
+            source: data:,ib_uverbs%0A
+          mode: 384
+          overwrite: true
+          path: /etc/modules-load.d/ib_uverbs.conf
+  kernelArguments:
+    - 'firmware_class.path=/var/lib/firmware'
