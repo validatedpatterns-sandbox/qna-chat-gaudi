@@ -45,7 +45,7 @@ spec:
           ports:
             - containerPort: 7000
               protocol: TCP
-          workingDir: /home/user/comps/retrievers/langchain
+          workingDir: /home/user/comps/retrievers/langchain/redis
           volumeMounts:
             - name: temp-data
               mountPath: /tmp/temp-data
