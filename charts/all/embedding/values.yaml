@@ -8,4 +8,4 @@ global:
     
     embedding:  
       image: image-registry.openshift-image-registry.svc:5000/gaudi-llm/embedding-tei:latest
-      git_ref: 8ebe2bf # make sure to validate buildconfig & other change scope before updating
+      git_ref: 76877c1b0a437ea09234efa56517c0d9bed83fa1 # make sure to validate buildconfig & other change scope before updating

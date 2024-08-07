@@ -22,7 +22,7 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: comps/retrievers/langchain/docker/Dockerfile
+      dockerfilePath: comps/retrievers/langchain/redis/docker/Dockerfile
       {{- if .Values.global.gaudillm.build_envs }}
       env:
       {{- range .Values.global.gaudillm.build_envs }}
